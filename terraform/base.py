@@ -42,7 +42,7 @@ class Network:
 
         for key in settings.NETWORK.keys():
             if key in ip:
-                return data.get(key)
+                return settings.NETWORK.get(key)
 
 
 
