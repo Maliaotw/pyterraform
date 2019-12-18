@@ -36,7 +36,7 @@ NETWORK = {
 
 import
 ```
-
+from terraform import Create,Delete,Update
 ```
 
 Create VM
