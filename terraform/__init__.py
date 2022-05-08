@@ -1,5 +1,3 @@
-
-from .log import *
-from .create import Create
+from .create import Create,CustomIPCreate
 from .update import Update
-from .delete import Delete
+from .delete import Delete, DeleteF

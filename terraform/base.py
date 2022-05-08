@@ -1,13 +1,20 @@
 import os
 import subprocess
 import re
-from conf import settings
+
 import logging
+
+# from django.conf import settings
+from conf import settings
+
+
+# from vm import models
 
 
 class Base:
-    BASE_DIR = settings.BASE_DIR
+    BASE_DIR = settings.TERRAFORM_DIR
     status = False
+    dhcp = True
 
     @property
     def hostname(self):
@@ -19,11 +26,18 @@ class Base:
 
     @property
     def path(self):
+        if self.dhcp:
+            logging.info('DHCP 自動發配IP')
+            conf = os.path.join(self.BASE_DIR, 'conf', 'dhcp')
+        else:
+            logging.info('靜態IP')
+            conf = os.path.join(self.BASE_DIR, 'conf', 'customip')
+
         data = {
             'base': self.BASE_DIR,
-            'conf': os.path.join(self.BASE_DIR, 'conf'),
-            'files': os.path.join(self.BASE_DIR, 'files'),
-            'host': os.path.join(self.BASE_DIR, 'files', self.hostname)
+            'conf': conf,
+            'files': os.path.join(settings.PROJECT_DIR, 'data', 'terraform'),
+            'host': os.path.join(settings.PROJECT_DIR, 'data', 'terraform', self.hostname)
         }
         return data
 
@@ -33,46 +47,32 @@ class Base:
             pass
         else:
             # print("新建host目錄")
-            os.mkdir(self.path['host'])
+            os.makedirs(self.path['host'])
 
 
-class Network:
-
-    def get_vars(self,ip):
-
-        for key in settings.NETWORK.keys():
-            if key in ip:
-                return settings.NETWORK.get(key)
-
-
-
-class Terraform(Base,Network):
+class Terraform(Base):
 
     def __init__(self, **kwargs):
-        '''
-        hostname='vm-test87',ipaddress='192.168.10.87'
-        '''
+        """
+        :param kwargs:
+            hostname='vm-test87',ipaddress='192.168.10.87'
+        """
 
         self.vars = kwargs
-        ipaddress = self.vars.get('ipaddress')
-        if ipaddress:
-            net_vars = self.get_vars(ipaddress)
-            self.vars.update(net_vars)
-
-        logging.info("%s\t%s\t%s" % (self.hostname, self.__class__.__name__,kwargs))
+        logging.info("%s\t%s\t%s" % (self.hostname, self.__class__.__name__, kwargs))
+        logging.info(self.vars)
         self.run()
 
     def run(self):
         pass
 
-    def complete(self,ret):
+    def complete(self, ret):
         if 'complete' in ret:
             logging.info('%s complete ok' % self.hostname)
         else:
             logging.info('%s complete error' % self.hostname)
             logging.error(ret)
-            raise Exception("complete 錯誤")
-
+            raise Exception(f"complete 錯誤 {self.hostname} {ret}")
 
     def valid(self, ret):
         string = re.findall('Resources:.(.*)\.', ret)[0]
@@ -84,14 +84,17 @@ class Terraform(Base,Network):
             logging.error('%s valid error' % self.hostname)
             raise Exception("valid 錯誤")
 
-
     def _init(self):
         os.chdir(self.path['host'])
-        subprocess.getoutput('terraform init')
-        logging.info('%s terraform init' % self.hostname)
+        ret = subprocess.getoutput('terraform init')
+        if "Terraform has been successfully initialized!" in ret:
+            logging.info('%s terraform init' % self.hostname)
+        else:
+            raise Exception(f'{self.hostname} terraform init ERROR!\nret')
 
     def _plan(self):
         ret = subprocess.getoutput('terraform plan')
+        print(ret)
         plan_string = re.findall('Plan:\S+(.*)\.', ret)[0]
         num = re.findall('(\d+).to %s' % self.valid_text, plan_string)[0]
 
@@ -101,13 +104,8 @@ class Terraform(Base,Network):
             logging.error('%s plan error' % self.hostname)
             raise Exception("plan 錯誤")
 
-
     def _main(self):
         ret = subprocess.getoutput(self.command)
         self.complete(ret)
         self.valid(ret)
-
-
-
-
-
+        self.status = True
